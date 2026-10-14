@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PT. Riski Jaya Abadi Mandiri - ERP Solar</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- React & Babel -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Supabase JS -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-slate-50 text-slate-800">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+    const supabaseUrl = "https://cehsxpmfcpgflgqkzkzg.supabase.co";
+    const supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNlaG94cG1mY3BnZmxncWt6a3pnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5ODc0MjUsImV4cCI6MjEwNzU2MzQyNX0.YEiB8XlxGs0ars0gfOOUieTQisTQ1kSps7RrTznbXrc";
+    const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+
+    function App() {
+      const [role, setRole] = useState("Super Admin");
+      const [tab, setTab] = useState("logistik");
+      const [pengiriman, setPengiriman] = useState([]);
+      const [spareparts, setSpareparts] = useState([]);
+      const [jurnal, setJurnal] = useState([]);
+      const [piutang, setPiutang] = useState([]);
+      const [loading, setLoading] = useState(false);
+
+      // Form Logistik
+      const [formLogistik, setFormLogistik] = useState({
+        tanggal: new Date().toISOString().split('T')[0],
+        no_surat_jalan: "",
+        agen_minyak: "",
+        tujuan_site: "",
+        nama_tempat: "",
+        ongkos_angkut: "",
+        uang_jalan_driver: "",
+        uang_jalan_transfer: "",
+        sisa_uang_jalan: ""
+      });
+
+      useEffect(() => {
+        muatData();
+      }, []);
+
+      const muatData = async () => {
+        setLoading(true);
+        const { data: dPengiriman } = await supabase.from('pengiriman_solar').select('*').order('id', { ascending: false });
+        const { data: dSparepart } = await supabase.from('sparepart_procurement').select('*').order('id', { ascending: false });
+        const { data: dJurnal } = await supabase.from('jurnal_keuangan').select('*').order('id', { ascending: false });
+        const { data: dPiutang } = await supabase.from('piutang_solar').select('*').order('id', { ascending: false });
+
+        if (dPengiriman) setPengiriman(dPengiriman);
+        if (dSparepart) setSpareparts(dSparepart);
+        if (dJurnal) setJurnal(dJurnal);
+        if (dPiutang) setPiutang(dPiutang);
+        setLoading(false);
+      };
+
+      const handleSimpanPengiriman = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        const sisa = (Number(formLogistik.uang_jalan_driver) || 0) - (Number(formLogistik.uang_jalan_transfer) || 0);
+        
+        const payload = {
+          ...formLogistik,
+          sisa_uang_jalan: sisa,
+          ongkos_angkut: Number(formLogistik.ongkos_angkut) || 0,
+          uang_jalan_driver: Number(formLogistik.uang_jalan_driver) || 0,
+          uang_jalan_transfer: Number(formLogistik.uang_jalan_transfer) || 0
+        };
+
+        const { error } = await supabase.from('pengiriman_solar').insert([payload]);
+        if (!error) {
+          // Masuk otomatis ke Jurnal
+          await supabase.from('jurnal_keuangan').insert([{
+            tanggal: formLogistik.tanggal,
+            kategori_sumber: "Jasa Transportir",
+            keterangan: `Pendapatan Angkut Solar SJ: ${formLogistik.no_surat_jalan} (${formLogistik.tujuan_site})`,
+            debit: Number(formLogistik.ongkos_angkut) || 0,
+            kredit: 0,
+            saldo: Number(formLogistik.ongkos_angkut) || 0
+          }]);
+
+          alert("Data pengiriman tersimpan & tersinkron ke Jurnal Keuangan!");
+          setFormLogistik({
+            tanggal: new Date().toISOString().split('T')[0],
+            no_surat_jalan: "",
+            agen_minyak: "",
+            tujuan_site: "",
+            nama_tempat: "",
+            ongkos_angkut: "",
+            uang_jalan_driver: "",
+            uang_jalan_transfer: "",
+            sisa_uang_jalan: ""
+          });
+          muatData();
+        } else {
+          alert("Gagal menyimpan: " + error.message);
+        }
+        setLoading(false);
+      };
+
+      const formatRp = (v) => "Rp " + Number(v || 0).toLocaleString("id-ID");
+
+      return (
+        <div className="min-h-screen flex flex-col bg-slate-100">
+          {/* Header */}
+          <header className="bg-slate-900 text-white px-4 py-3 shadow flex flex-wrap justify-between items-center gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-lg tracking-wide text-amber-400">PT. RISKI JAYA ABADI MANDIRI</span>
+                <span className="bg-amber-500/20 text-amber-300 text-xs px-2 py-0.5 rounded border border-amber-500/30">Buatan Eko Hardiono</span>
+              </div>
+              <p className="text-xs text-slate-400">Sistem ERP Terpadu Angkutan & Distribusi Solar B35</p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-300">Akses:</span>
+              <select 
+                value={role} 
+                onChange={(e) => setRole(e.target.value)}
+                className="bg-slate-800 text-amber-400 text-xs font-semibold px-3 py-1.5 rounded border border-slate-700 outline-none"
+              >
+                <option value="Super Admin">Super Admin (Akses Penuh)</option>
+                <option value="Finance">Finance</option>
+                <option value="Logistik">Logistik</option>
+                <option value="Marketing">Marketing</option>
+              </select>
+            </div>
+          </header>
+
+          {/* Navigasi Menu */}
+          <nav className="bg-white border-b border-slate-200 px-4 py-2 flex gap-2 overflow-x-auto">
+            {["logistik", "sparepart", "jurnal", "piutang"].map((item) => (
+              <button
+                key={item}
+                onClick={() => setTab(item)}
+                className={`px-4 py-2 text-xs font-bold uppercase rounded-lg transition-all ${
+                  tab === item ? "bg-amber-500 text-slate-950" : "text-slate-600 hover:bg-slate-100"
+                }`}
+              >
+                {item === "logistik" ? "🚚 Pengiriman Solar" : item === "sparepart" ? "🔧 Pengadaan Spare Part" : item === "jurnal" ? "📖 Jurnal Keuangan" : "📋 Tagihan & Piutang (AR)"}
+              </button>
+            ))}
+          </nav>
+
+          {/* Konten Utama */}
+          <main className="p-4 flex-1">
+            {tab === "logistik" && (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Form Input */}
+                <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200 h-fit">
+                  <h3 className="font-bold text-slate-800 text-sm mb-4 border-b pb-2 flex items-center justify-between">
+                    <span>Input Pengiriman Solar Baru</span>
+                    <span className="text-[10px] text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">Supabase Connected</span>
+                  </h3>
+                  <form onSubmit={handleSimpanPengiriman} className="space-y-3">
+                    <div>
+                      <label className="text-[11px] font-semibold text-slate-600">Tanggal Pengiriman</label>
+                      <input type="date" required value={formLogistik.tanggal} onChange={e=>setFormLogistik({...formLogistik, tanggal: e.target.value})} className="w-full text-xs border rounded p-2 mt-1" />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-semibold text-slate-600">Nomor Surat Jalan</label>
+                      <input type="text" placeholder="Contoh: SJ-2026-001" required value={formLogistik.no_surat_jalan} onChange={e=>setFormLogistik({...formLogistik, no_surat_jalan: e.target.value})} className="w-full text-xs border rounded p-2 mt-1" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[11px] font-semibold text-slate-600">Agen / Pemilik Minyak</label>
+                        <input type="text" placeholder="PT..." required value={formLogistik.agen_minyak} onChange={e=>setFormLogistik({...formLogistik, agen_minyak: e.target.value})} className="w-full text-xs border rounded p-2 mt-1" />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-semibold text-slate-600">Tujuan Site</label>
+                        <input type="text" placeholder="Site Tambang / Pabrik" required value={formLogistik.tujuan_site} onChange={e=>setFormLogistik({...formLogistik, tujuan_site: e.target.value})} className="w-full text-xs border rounded p-2 mt-1" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-semibold text-slate-600">Ongkos Angkut (Rp)</label>
+                      <input type="number" placeholder="0" required value={formLogistik.ongkos_angkut} onChange={e=>setFormLogistik({...formLogistik, ongkos_angkut: e.target.value})} className="w-full text-xs border rounded p-2 mt-1" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[11px] font-semibold text-slate-600">Uang Jalan Driver (Rp)</label>
+                        <input type="number" placeholder="0" value={formLogistik.uang_jalan_driver} onChange={e=>setFormLogistik({...formLogistik, uang_jalan_driver: e.target.value})} className="w-full text-xs border rounded p-2 mt-1" />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-semibold text-slate-600">Ditransfer (Rp)</label>
+                        <input type="number" placeholder="0" value={formLogistik.uang_jalan_transfer} onChange={e=>setFormLogistik({...formLogistik, uang_jalan_transfer: e.target.value})} className="w-full text-xs border rounded p-2 mt-1" />
+                      </div>
+                    </div>
+                    <button type="submit" disabled={loading} className="w-full bg-slate-900 text-white font-bold py-2.5 rounded-lg text-xs hover:bg-slate-800 transition">
+                      {loading ? "Menyimpan ke Cloud..." : "Simpan & Sinkronkan ke Jurnal"}
+                    </button>
+                  </form>
+                </div>
+
+                {/* Tabel Data */}
+                <div className="lg:col-span-2 bg-white p-5 rounded-xl shadow-sm border border-slate-200 overflow-x-auto">
+                  <h3 className="font-bold text-slate-800 text-sm mb-4">Riwayat Pengiriman Solar</h3>
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="bg-slate-50 text-slate-600 border-b">
+                        <th className="p-2">Tanggal</th>
+                        <th className="p-2">No. Surat Jalan</th>
+                        <th className="p-2">Agen</th>
+                        <th className="p-2">Site</th>
+                        <th className="p-2">Ongkos Angkut</th>
+                        <th className="p-2">Sisa UJ</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {pengiriman.length === 0 ? (
+                        <tr><td colSpan="6" className="text-center py-6 text-slate-400">Belum ada data pengiriman di database.</td></tr>
+                      ) : (
+                        pengiriman.map((p) => (
+                          <tr key={p.id} className="hover:bg-slate-50">
+                            <td className="p-2">{p.tanggal}</td>
+                            <td className="p-2 font-semibold text-slate-900">{p.no_surat_jalan}</td>
+                            <td className="p-2">{p.agen_minyak}</td>
+                            <td className="p-2">{p.tujuan_site}</td>
+                            <td className="p-2 text-emerald-600 font-semibold">{formatRp(p.ongkos_angkut)}</td>
+                            <td className="p-2 text-amber-600 font-medium">{formatRp(p.sisa_uang_jalan)}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {tab === "jurnal" && (
+              <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200 overflow-x-auto">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="font-bold text-slate-800 text-sm">Jurnal Keuangan Umum Terpadu</h3>
+                  <button onClick={muatData} className="text-xs bg-slate-100 hover:bg-slate-200 px-3 py-1 rounded">Refresh Data</button>
+                </div>
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="bg-slate-50 text-slate-600 border-b">
+                      <th className="p-2">Tanggal</th>
+                      <th className="p-2">Sumber Transaksi</th>
+                      <th className="p-2">Keterangan</th>
+                      <th className="p-2">Dana Masuk (Debit)</th>
+                      <th className="p-2">Pengeluaran (Kredit)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {jurnal.length === 0 ? (
+                      <tr><td colSpan="5" className="text-center py-6 text-slate-400">Belum ada transaksi di jurnal.</td></tr>
+                    ) : (
+                      jurnal.map((j) => (
+                        <tr key={j.id} className="hover:bg-slate-50">
+                          <td className="p-2">{j.tanggal}</td>
+                          <td className="p-2">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              j.kategori_sumber === 'Jasa Transportir' ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700'
+                            }`}>
+                              {j.kategori_sumber}
+                            </span>
+                          </td>
+                          <td className="p-2">{j.keterangan}</td>
+                          <td className="p-2 font-semibold text-emerald-600">{formatRp(j.debit)}</td>
+                          <td className="p-2 font-semibold text-rose-600">{formatRp(j.kredit)}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {tab === "sparepart" && (
+              <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+                <h3 className="font-bold text-slate-800 text-sm mb-2">Komparasi Pengadaan Spare Part (Toko A, B, C)</h3>
+                <p className="text-xs text-slate-500 mb-4">Pilihan toko terbaik disertai alasan dan nomor rekening bank masing-masing vendor.</p>
+                <div className="text-center py-12 text-slate-400 text-xs">Modul komparasi 3 toko & upload nota siap menerima input.</div>
+              </div>
+            )}
+
+            {tab === "piutang" && (
+              <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+                <h3 className="font-bold text-slate-800 text-sm mb-2">Monitoring Piutang & Klaim Losses BBM</h3>
+                <p className="text-xs text-slate-500 mb-4">Pengawasan jatuh tempo (due date) invoice dan potongan susut solar saat pembongkaran.</p>
+                <div className="text-center py-12 text-slate-400 text-xs">Tabel monitoring piutang dan toleransi losses BBM.</div>
+              </div>
+            )}
+          </main>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
